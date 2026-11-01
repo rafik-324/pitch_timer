@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pitch &amp; Pizza Timer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%95%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #15100f;
+    --panel: #241b19;
+    --panel-line: #3d2f2b;
+    --text: #fff6e6;
+    --muted: #b9a998;
+    --basil: #63d471;
+    --cheese: #ffc42e;
+    --orange: #ff9a1f;
+    --tomato: #ff3b2a;
+    --accent: var(--basil);
+    --ring: clamp(220px, min(100vh - 232px, 92vw), 1400px);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  body[data-phase="warn"] { --accent: var(--orange); }
+  body[data-phase="danger"] { --accent: var(--tomato); }
+
+  #stage {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 14px;
+    overflow: hidden;
+  }
+
+  /* Weiches Glühen hinter dem Ring: nur Opacity/Transform, damit es auch auf alten Laptops flüssig bleibt */
+  #ambient {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 150vmax; height: 150vmax;
+    margin: -75vmax 0 0 -75vmax;
+    pointer-events: none;
+    opacity: .2;
+    background: radial-gradient(circle, var(--accent) 0%, transparent 42%);
+    transition: opacity .8s;
+  }
+  body[data-phase="warn"] #ambient { opacity: .26; }
+  body[data-phase="danger"] #ambient { opacity: .42; }
+  body[data-phase="danger"][data-state="running"] #ambient { animation: ambient-pulse 1s ease-in-out infinite; }
+  @keyframes ambient-pulse { 50% { opacity: .14; } }
+
+  .brand {
+    position: relative;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: .02em;
+    white-space: nowrap;
+  }
+  .brand b { color: var(--tomato); }
+  .brand i { color: var(--cheese); font-style: normal; }
+
+  /* ---------- Ring und Zeit ---------- */
+  #dial {
+    /* Hier statt in :root berechnet, damit die Ziffern dem --ring des Vollbilds folgen */
+    --digits: calc(var(--ring) * var(--digit-scale, .36));
+    position: relative;
+    flex: none;
+    width: var(--ring);
+    height: var(--ring);
+  }
+  body[data-phase="danger"][data-state="running"] #dial { animation: dial-pulse 1s ease-in-out infinite; }
+  @keyframes dial-pulse { 50% { transform: scale(1.025); } }
+
+  #ring { display: block; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+  #classic circle { fill: none; transition: stroke .6s; }
+  #track { stroke: #fff; stroke-opacity: .08; stroke-width: 7; }
+  #halo, #progress { stroke: var(--accent); stroke-linecap: round; }
+  #halo { stroke-width: 14; stroke-opacity: .2; }
+  #progress { stroke-width: 7; }
+  #pizza { display: none; }
+  body.pizza #classic { display: none; }
+  body.pizza #pizza { display: block; }
+  body.pizza #dial { --digit-scale: .27; }
+  #dial.long { --digit-scale: .27; }
+  body.pizza #dial.long { --digit-scale: .21; }
+
+  #readout {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  #time {
+    display: flex;
+    font-size: var(--digits);
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    transition: color .6s;
+  }
+  body[data-phase="warn"] #time { color: var(--cheese); }
+  body[data-phase="danger"] #time { color: var(--tomato); }
+  #time span { display: block; width: .62em; text-align: center; }
+  #time span.colon { width: .34em; margin-top: -.06em; }
+  body[data-state="paused"] #time { animation: paused 1.6s ease-in-out infinite; }
+  @keyframes paused { 50% { opacity: .45; } }
+
+  #status {
+    position: absolute;
+    left: 0; right: 0;
+    top: calc(50% + var(--digits) * .62);
+    text-align: center;
+    font-size: calc(var(--ring) * .04);
+    font-weight: 700;
+    letter-spacing: .24em;
+    text-indent: .24em;
+    color: var(--muted);
+  }
+
+  /* ---------- Bedienung ---------- */
+  #controls {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    transition: opacity .25s;
+  }
+  .row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+  body:not([data-state="idle"]) #setup { visibility: hidden; }
+
+  button, select, input { font: inherit; color: inherit; }
+  button {
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-weight: 650;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background .15s, transform .1s, opacity .15s;
+  }
+  button:hover:not(:disabled) { background: #33272a; }
+  button:active:not(:disabled) { transform: scale(.97); }
+  button:disabled { opacity: .38; cursor: default; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--cheese); outline-offset: 2px; }
+  button.primary { background: var(--tomato); border-color: var(--tomato); color: #fff; min-width: 120px; }
+  button.primary:hover:not(:disabled) { background: #ff5546; }
+  button.preset { font-variant-numeric: tabular-nums; }
+  button.preset.active { border-color: var(--cheese); color: var(--cheese); }
+  kbd {
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 16px;
+    background: rgba(255, 255, 255, .12);
+  }
+
+  .time-input { display: flex; align-items: center; gap: 4px; margin-left: 8px; font-weight: 700; }
+  input[type="number"] {
+    width: 58px;
+    padding: 7px 4px;
+    text-align: center;
+    font-size: 17px;
+    font-variant-numeric: tabular-nums;
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 10px;
+    -moz-appearance: textfield;
+    appearance: textfield;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  input[type="number"]::-webkit-inner-spin-button { display: none; }
+
+  /* ---------- Einstellungen ---------- */
+  #settings {
+    position: fixed;
+    z-index: 20;
+    right: 16px;
+    bottom: 16px;
+    width: min(340px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    display: grid;
+    gap: 14px;
+    padding: 18px;
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 16px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+  }
+  #settings[hidden] { display: none; }
+  #settings h2 { margin: 0; font-size: 17px; }
+  #settings label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+  #settings label.check { display: flex; align-items: center; gap: 8px; color: var(--text); }
+  #settings .inline { display: flex; gap: 8px; }
+  #settings select { flex: 1; min-width: 0; padding: 8px; color: var(--text); background: var(--bg); border: 1px solid var(--panel-line); border-radius: 10px; }
+  #settings input[type="range"], #settings input[type="checkbox"] { accent-color: var(--tomato); }
+  #settings .info { margin: 0; font-size: 12.5px; color: var(--muted); }
+  #test { min-width: 76px; color: var(--text); }
+
+  #toast {
+    position: fixed;
+    z-index: 30;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100vw - 32px);
+    padding: 10px 16px;
+    font-weight: 650;
+    color: #1a1208;
+    background: var(--cheese);
+    border-radius: 10px;
+  }
+  #toast[hidden] { display: none; }
+
+  /* ---------- Vollbild: nur Ring und Zeit, Bedienung bei Mausbewegung ---------- */
+  body.fs { --ring: min(95vh, 95vw); cursor: none; }
+  body.fs.show-ui { cursor: auto; }
+  body.fs #stage { justify-content: center; padding: 0; }
+  body.fs .brand { display: none; }
+  body.fs #controls {
+    position: fixed;
+    z-index: 10;
+    bottom: 16px;
+    padding: 12px 16px;
+    background: rgba(21, 16, 15, .88);
+    border: 1px solid var(--panel-line);
+    border-radius: 16px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  body.fs.show-ui #controls { opacity: 1; pointer-events: auto; }
+  body.fs #status { display: none; }
+  body.fs[data-state="paused"] #status { display: block; }
+
+  /* ---------- Alarm ---------- */
+  #alarm {
+    position: fixed;
+    z-index: 100;
+    inset: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    /* 2,5 Wechsel pro Sekunde: maximal auffällig, aber unter der 3-Hz-Grenze für Fotosensibilität */
+    animation: alarm-bg .4s steps(1) infinite;
+  }
+  #alarm[hidden] { display: none; }
+  @keyframes alarm-bg { 0% { background: #e30d00; color: #fff; } 50% { background: #fff; color: #e30d00; } }
+  #alarm-text {
+    font-size: min(17vw, 62vh);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -.02em;
+    white-space: nowrap;
+    animation: alarm-shake .22s linear infinite;
+  }
+  @keyframes alarm-shake {
+    0%, 100% { transform: translate(0, 0) rotate(0); }
+    25% { transform: translate(-.6vw, .5vh) rotate(-1deg); }
+    50% { transform: translate(.5vw, -.6vh) rotate(.8deg); }
+    75% { transform: translate(-.4vw, -.4vh) rotate(-.6deg); }
+  }
+  #alarm-hint { margin-top: 2vh; font-size: max(16px, 2.2vmin); font-weight: 700; }
+  .blast { position: absolute; top: 50%; left: 50%; pointer-events: none; }
+  .blast.wave { width: 20vmin; height: 20vmin; margin: -10vmin 0 0 -10vmin; border: 3vmin solid #ffc42e; border-radius: 50%; }
+  .blast.bit { font-size: 7vmin; line-height: 1; margin: -3.5vmin 0 0 -3.5vmin; }
+
+  /* ---------- Kleine und schmale Fenster ---------- */
+  @media (max-height: 620px) {
+    :root { --ring: clamp(180px, min(100vh - 176px, 92vw), 1400px); }
+    #stage { padding: 4px 12px 8px; }
+    .brand { font-size: 15px; }
+    button { padding: 6px 11px; font-size: 14px; }
+    #controls { gap: 6px; }
+  }
+  @media (max-width: 760px) {
+    :root { --ring: clamp(180px, min(100vh - 300px, 92vw), 1400px); }
+    kbd { display: none; }
+    .time-input { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body[data-phase="danger"][data-state="running"] #dial,
+    body[data-phase="danger"][data-state="running"] #ambient,
+    #alarm-text { animation: none; }
+    #alarm { animation-duration: 1.2s; }
+  }
+</style>
+</head>
+<body data-state="idle" data-phase="normal">
+<main id="stage">
+  <div id="ambient"></div>
+  <div class="brand">🍕 <b>Pitch</b> &amp; <i>Pizza</i></div>
+
+  <div id="dial">
+    <svg id="ring" viewBox="0 0 200 200" aria-hidden="true">
+      <g id="classic">
+        <circle id="track" cx="100" cy="100" r="92"/>
+        <circle id="halo" cx="100" cy="100" r="92"/>
+        <circle id="progress" cx="100" cy="100" r="92"/>
+      </g>
+      <g id="pizza"></g>
+    </svg>
+    <div id="readout">
+      <div id="time" role="timer" aria-label="Restzeit"></div>
+      <div id="status"></div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <div id="setup" class="row">
+      <button class="preset" data-seconds="60">1:00</button>
+      <button class="preset" data-seconds="120">2:00</button>
+      <button class="preset" data-seconds="180">3:00</button>
+      <button class="preset" data-seconds="300">5:00</button>
+      <div class="time-input">
+        <input id="minutes" type="number" min="0" max="99" inputmode="numeric" aria-label="Minuten">
+        :
+        <input id="seconds" type="number" min="0" max="59" inputmode="numeric" aria-label="Sekunden">
+      </div>
+    </div>
+    <div class="row">
+      <button id="start" class="primary">Start<kbd>Leer</kbd></button>
+      <button id="pause" disabled>Pause</button>
+      <button id="reset">Reset<kbd>R</kbd></button>
+      <button id="fullscreen">Vollbild<kbd>F</kbd></button>
+      <button id="open-settings" aria-expanded="false" aria-controls="settings">Einstellungen</button>
+    </div>
+  </div>
+</main>
+
+<aside id="settings" aria-label="Einstellungen" hidden>
+  <h2>Einstellungen</h2>
+  <label><span>Lautstärke: <span id="volume-value"></span></span>
+    <input id="volume" type="range" min="10" max="100" step="1">
+  </label>
+  <label>Alarmton
+    <span class="inline">
+      <select id="tone">
+        <option value="buzzer">Buzzer (DÖ DÖ DÖ DÖ)</option>
+        <option value="siren">Sirene</option>
+        <option value="horn">Gong-Hupe</option>
+      </select>
+      <button id="test" type="button">Test</button>
+    </span>
+  </label>
+  <label class="check"><input id="warn-beeps" type="checkbox"> Dezenter Piep bei 30 und 10 Sekunden</label>
+  <label class="check"><input id="pizza-mode" type="checkbox"> Pizza-Modus <kbd>P</kbd></label>
+  <p class="info">Bildschirm wach halten: <span id="wake-status">wird beim Start aktiviert</span></p>
+  <p class="info">Die Lautstärke des Computers kann der Browser nicht ändern. Vor dem Event mit „Test“ prüfen.</p>
+  <button id="close-settings" type="button">Schließen</button>
+</aside>
+
+<div id="alarm" role="alert" hidden>
+  <div id="alarm-text">TIME'S UP</div>
+  <div id="alarm-hint">Beliebige Taste oder Klick stoppt den Alarm</div>
+</div>
+<div id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = id => document.getElementById(id);
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const WARN_MS = 30000;
+  const DANGER_MS = 10000;
+  const RING_CIRCUMFERENCE = 2 * Math.PI * 92;
+  const TONES = ['buzzer', 'siren', 'horn'];
+
+  /* ---------- Einstellungen ---------- */
+
+  const STORAGE_KEY = 'pitch-timer-settings-v1';
+  const settings = { durationSec: 180, volume: 100, tone: 'buzzer', warnBeeps: true, pizza: false };
+
+  function loadSettings() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch (e) { /* kaputt oder blockiert: Standardwerte */ }
+    if (Number.isInteger(saved.durationSec) && saved.durationSec >= 1 && saved.durationSec <= 5999) settings.durationSec = saved.durationSec;
+    if (Number.isFinite(saved.volume)) settings.volume = clamp(saved.volume, 10, 100);
+    if (TONES.includes(saved.tone)) settings.tone = saved.tone;
+    if (typeof saved.warnBeeps === 'boolean') settings.warnBeeps = saved.warnBeeps;
+    if (typeof saved.pizza === 'boolean') settings.pizza = saved.pizza;
+  }
+
+  function saveSettings() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (e) { /* privater Modus: läuft trotzdem */ }
+  }
+
+  /* ---------- Audio ---------- */
+
+  // Jeder Alarm wird einmal als Sample-Puffer berechnet und per Loop abgespielt.
+  // Das läuft auf dem Audio-Thread weiter, auch wenn der Tab im Hintergrund gedrosselt wird.
+  // Lautheit entsteht hier statt in einem DynamicsCompressorNode: Dessen Pegel weicht je nach Browser
+  // stark ab (Firefox gemessen rund 12 dB leiser). Sättigen und Normalisieren klingt überall gleich
+  // und hält die Spitze sicher unter 1, es kann also nicht clippen.
+  function renderLoop(sampleRate, seconds, sampleAt, drive = 2.5) {
+    const data = new Float32Array(Math.round(sampleRate * seconds));
+    let peak = 0;
+    for (let i = 0; i < data.length; i++) {
+      data[i] = sampleAt(i / sampleRate);
+      peak = Math.max(peak, Math.abs(data[i]));
+    }
+    const fade = Math.round(sampleRate * 0.003);
+    for (let i = 0; i < fade; i++) {
+      data[i] *= i / fade;
+      data[data.length - 1 - i] *= i / fade;
+    }
+    const ceiling = 0.98;
+    for (let i = 0; i < data.length; i++) data[i] = ceiling * Math.tanh(drive * data[i] / peak) / Math.tanh(drive);
+    return data;
+  }
+
+  const square = phase => (phase % 1 < 0.5 ? 1 : -1);
+  const saw = phase => 2 * (phase % 1) - 1;
+
+  const TONE_SYNTHS = {
+    // Vier harte 880-Hz-Stöße, dann eine winzige Pause
+    buzzer(sr) {
+      const step = 0.2, on = 0.14;
+      return renderLoop(sr, step * 4 + 0.1, t => {
+        const inStep = t % step;
+        if (t >= step * 4 || inStep >= on) return 0;
+        const edge = Math.min(1, inStep / 0.002, (on - inStep) / 0.002);
+        return square(880 * t) * edge;
+      });
+    },
+    // Sägezahn, der zwischen 650 und 1350 Hz auf- und abschwillt
+    siren(sr) {
+      let phase = 0;
+      return renderLoop(sr, 1, t => {
+        const freq = 1000 - 350 * Math.cos(2 * Math.PI * t);
+        phase += freq / sr;
+        return saw(phase);
+      });
+    },
+    // Hupen-Akkord mit metallischem Gong-Anschlag
+    horn(sr) {
+      const blast = 0.7;
+      return renderLoop(sr, blast + 0.18, t => {
+        if (t >= blast) return 0;
+        const edge = Math.min(1, t / 0.008, (blast - t) / 0.02);
+        const chord = saw(415 * t) + saw(523 * t) + saw(622 * t);
+        const strike = Math.exp(-t * 7) * (Math.sin(2 * Math.PI * 1187 * t) + Math.sin(2 * Math.PI * 1903 * t));
+        return (chord + 1.5 * strike) * edge;
+      }, 8); // Der Anschlag bestimmt die Spitze, ohne starke Sättigung wäre der Haltton deutlich leiser
+    },
+  };
+
+  const audio = {
+    ctx: null, master: null, buffers: {}, loop: null, watchdog: null, testTimer: 0,
+
+    // Muss synchron in einer Nutzeraktion laufen, sonst blockiert die Autoplay-Richtlinie den Alarm
+    unlock() {
+      if (!this.ctx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        this.ctx = new Ctx({ latencyHint: 'interactive' });
+        this.buildGraph();
+      }
+      if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
+      const blip = this.ctx.createBufferSource();
+      blip.buffer = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
+      blip.connect(this.ctx.destination);
+      blip.start();
+    },
+
+    buildGraph() {
+      this.master = this.ctx.createGain();
+      this.master.connect(this.ctx.destination);
+      this.applyVolume();
+      Object.keys(TONE_SYNTHS).forEach(name => this.buffer(name));
+    },
+
+    buffer(name) {
+      if (!this.buffers[name]) {
+        const data = TONE_SYNTHS[name](this.ctx.sampleRate);
+        const buffer = this.ctx.createBuffer(1, data.length, this.ctx.sampleRate);
+        buffer.copyToChannel(data, 0);
+        this.buffers[name] = buffer;
+      }
+      return this.buffers[name];
+    },
+
+    applyVolume() {
+      if (!this.master) return;
+      const pct = settings.volume / 100;
+      // Direkt setzen: Eine Rampe würde Chromium ohne laufenden Ton nicht abarbeiten, der nächste Ton begänne zu laut
+      this.master.gain.value = pct * pct;
+    },
+
+    startAlarm() {
+      if (!this.ctx) return;
+      this.stopAlarm();
+      if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
+      this.loop = this.ctx.createBufferSource();
+      this.loop.buffer = this.buffer(settings.tone);
+      this.loop.loop = true;
+      this.loop.connect(this.master);
+      this.loop.start();
+    },
+
+    stopAlarm() {
+      clearTimeout(this.testTimer);
+      if (!this.loop) return;
+      this.loop.stop();
+      this.loop.disconnect();
+      this.loop = null;
+    },
+
+    beep(count) {
+      if (!this.ctx || this.ctx.state !== 'running' || !settings.warnBeeps) return;
+      const t0 = this.ctx.currentTime + 0.01;
+      for (let i = 0; i < count; i++) {
+        const start = t0 + i * 0.2;
+        const osc = this.ctx.createOscillator();
+        const env = this.ctx.createGain();
+        osc.frequency.value = 1050;
+        env.gain.setValueAtTime(0, start);
+        env.gain.linearRampToValueAtTime(0.2, start + 0.01);
+        env.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
+        osc.connect(env).connect(this.master);
+        osc.start(start);
+        osc.stop(start + 0.15);
+      }
+    },
+
+    // Ein stummer Knoten, dessen Ende die Audio-Uhr auslöst. rAF steht in verdeckten Tabs still und
+    // Timer werden dort gedrosselt; so kommt der Alarm trotzdem pünktlich.
+    armWatchdog(ms, callback) {
+      this.disarmWatchdog();
+      if (!this.ctx) return;
+      const node = this.ctx.createConstantSource();
+      const silence = this.ctx.createGain();
+      silence.gain.value = 0;
+      node.connect(silence).connect(this.ctx.destination);
+      node.onended = callback;
+      node.start();
+      node.stop(this.ctx.currentTime + ms / 1000 + 0.02);
+      this.watchdog = node;
+    },
+
+    disarmWatchdog() {
+      if (!this.watchdog) return;
+      this.watchdog.onended = null;
+      try { this.watchdog.stop(); } catch (e) { /* schon beendet */ }
+      this.watchdog.disconnect();
+      this.watchdog = null;
+    },
+  };
+
+  /* ---------- Bildschirm wach halten ---------- */
+
+  const wake = {
+    sentinel: null, video: null,
+
+    async acquire() {
+      if (document.visibilityState !== 'visible') return;
+      if (this.sentinel && !this.sentinel.released) return;
+      if ('wakeLock' in navigator) {
+        try {
+          this.sentinel = await navigator.wakeLock.request('screen');
+          $('wake-status').textContent = 'aktiv (Wake Lock)';
+          return;
+        } catch (e) { /* weiter zum Fallback */ }
+      }
+      this.fallback();
+    },
+
+    // Ein laufendes, stummes Mini-Video hält viele Browser wach, wenn es keine Wake Lock API gibt
+    async fallback() {
+      try {
+        if (!this.video) {
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 2;
+          canvas.getContext('2d').fillRect(0, 0, 2, 2);
+          this.video = document.createElement('video');
+          this.video.muted = true;
+          this.video.playsInline = true;
+          this.video.style.cssText = 'position:fixed;width:1px;height:1px;opacity:.01;pointer-events:none';
+          this.video.srcObject = canvas.captureStream(1);
+          document.body.append(this.video);
+        }
+        await this.video.play();
+        $('wake-status').textContent = 'aktiv (Video-Fallback)';
+      } catch (e) {
+        $('wake-status').textContent = 'nicht verfügbar, bitte Energiesparen am Rechner abschalten';
+      }
+    },
+  };
+
+  /* ---------- Timer ---------- */
+
+  let state = 'idle'; // idle | running | paused | alarm
+  let durationMs = settings.durationSec * 1000;
+  let remainingAtAnchor = durationMs;
+  let anchor = 0;
+  let lastRemaining = durationMs;
+  let shownSeconds = -1;
+
+  function remaining() {
+    if (state !== 'running') return remainingAtAnchor;
+    return Math.max(0, remainingAtAnchor - (performance.now() - anchor));
+  }
+
+  function setState(next) {
+    state = next;
+    document.body.dataset.state = next;
+    $('start').disabled = next !== 'idle' || durationMs <= 0;
+    $('pause').disabled = next !== 'running' && next !== 'paused';
+    $('pause').firstChild.textContent = next === 'paused' ? 'Fortsetzen' : 'Pause';
+    $('test').disabled = next === 'running';
+    $('status').textContent = next === 'paused' ? 'PAUSE' : next === 'idle' ? 'BEREIT' : '';
+  }
+
+  function run() {
+    anchor = performance.now();
+    setState('running');
+    audio.armWatchdog(remainingAtAnchor, expire);
+    wake.acquire();
+    requestAnimationFrame(frame);
+    setTimeout(() => {
+      if (audio.ctx && audio.ctx.state !== 'running') showToast('Audio ist blockiert. Bitte einmal in die Seite klicken.');
+      else if (!audio.ctx) showToast('Dieser Browser kann keinen Ton abspielen. Der Alarm bleibt stumm.');
+    }, 400);
+  }
+
+  function start() {
+    if (state !== 'idle' || durationMs <= 0) return;
+    stopTest();
+    audio.unlock();
+    remainingAtAnchor = lastRemaining = durationMs;
+    run();
+  }
+
+  function togglePause() {
+    if (state === 'running') {
+      remainingAtAnchor = remaining();
+      audio.disarmWatchdog();
+      setState('paused');
+      render(remainingAtAnchor);
+    } else if (state === 'paused') {
+      audio.unlock();
+      run();
+    }
+  }
+
+  function reset() {
+    if (state === 'alarm') return;
+    audio.disarmWatchdog();
+    remainingAtAnchor = lastRemaining = durationMs;
+    setState('idle');
+    render(durationMs);
+  }
+
+  function tick() {
+    if (state !== 'running') return;
+    const r = remaining();
+    if (r <= 0) { expire(); return; }
+    if (lastRemaining > WARN_MS && r <= WARN_MS) audio.beep(1);
+    if (lastRemaining > DANGER_MS && r <= DANGER_MS) audio.beep(2);
+    lastRemaining = r;
+    render(r);
+  }
+
+  function frame() {
+    if (state !== 'running') return;
+    tick();
+    if (state === 'running') requestAnimationFrame(frame);
+  }
+
+  function expire() {
+    if (state !== 'running') return;
+    audio.disarmWatchdog();
+    remainingAtAnchor = 0;
+    setState('alarm');
+    render(0);
+    audio.startAlarm();
+    $('settings').hidden = true;
+    $('alarm').hidden = false;
+    explode();
+  }
+
+  function stopAlarm() {
+    if (state !== 'alarm') return;
+    audio.stopAlarm();
+    $('alarm').hidden = true;
+    state = 'stopped';
+    reset();
+  }
+
+  /* ---------- Anzeige ---------- */
+
+  function formatTime(totalSeconds) {
+    const m = Math.floor(totalSeconds / 60), s = totalSeconds % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  function setDigits(text) {
+    const box = $('time');
+    if (box.children.length !== text.length) {
+      box.textContent = '';
+      for (const ch of text) {
+        const cell = document.createElement('span');
+        cell.textContent = ch;
+        if (ch === ':') cell.className = 'colon';
+        box.append(cell);
+      }
+      $('dial').classList.toggle('long', text.length > 4);
+      return;
+    }
+    [...text].forEach((ch, i) => {
+      const cell = box.children[i];
+      if (cell.textContent === ch) return;
+      cell.textContent = ch;
+      if (!reducedMotion && state === 'running') {
+        cell.animate(
+          [{ transform: 'translateY(-.1em) scale(1.06)', opacity: .35 }, { transform: 'none', opacity: 1 }],
+          { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' }
+        );
+      }
+    });
+  }
+
+  function render(r) {
+    const fraction = durationMs > 0 ? clamp(r / durationMs, 0, 1) : 0;
+    const dash = `${fraction * RING_CIRCUMFERENCE} ${RING_CIRCUMFERENCE}`;
+    $('progress').setAttribute('stroke-dasharray', dash);
+    $('halo').setAttribute('stroke-dasharray', dash);
+    // Runde Linienenden würden bei 0 als Punkt stehen bleiben
+    const linecap = fraction > 0 ? 'round' : 'butt';
+    $('progress').style.strokeLinecap = linecap;
+    $('halo').style.strokeLinecap = linecap;
+    if (settings.pizza) renderPizza(fraction);
+
+    const phase = state === 'idle' ? 'normal' : r <= DANGER_MS ? 'danger' : r <= WARN_MS ? 'warn' : 'normal';
+    if (document.body.dataset.phase !== phase) document.body.dataset.phase = phase;
+
+    const secs = Math.ceil(r / 1000);
+    if (secs !== shownSeconds) {
+      shownSeconds = secs;
+      setDigits(formatTime(secs));
+      document.title = state === 'idle' ? 'Pitch & Pizza Timer' : `${formatTime(secs)} · Pitch & Pizza`;
+    }
+  }
+
+  function explode() {
+    const overlay = $('alarm');
+    if (reducedMotion) return;
+    const wave = document.createElement('div');
+    wave.className = 'blast wave';
+    overlay.append(wave);
+    wave.animate(
+      [{ transform: 'scale(.2)', opacity: 1 }, { transform: 'scale(14)', opacity: 0 }],
+      { duration: 800, easing: 'cubic-bezier(.1,.7,.3,1)' }
+    ).onfinish = () => wave.remove();
+    for (let i = 0; i < 44; i++) {
+      const bit = document.createElement('div');
+      bit.className = 'blast bit';
+      bit.textContent = i % 3 ? '🍕' : '🔥';
+      overlay.append(bit);
+      const angle = Math.random() * 2 * Math.PI;
+      const dist = 40 + Math.random() * 70;
+      const x = Math.cos(angle) * dist, y = Math.sin(angle) * dist;
+      bit.animate(
+        [
+          { transform: 'translate(0, 0) scale(.3) rotate(0)', opacity: 1 },
+          { transform: `translate(${x}vmax, ${y}vmax) scale(${1 + Math.random()}) rotate(${Math.random() * 900 - 450}deg)`, opacity: .9 },
+        ],
+        { duration: 900 + Math.random() * 700, easing: 'cubic-bezier(.1,.8,.3,1)' }
+      ).onfinish = () => bit.remove();
+    }
+    overlay.animate(
+      [
+        { transform: 'scale(1.08) rotate(1deg)' }, { transform: 'scale(.97) rotate(-1deg)' },
+        { transform: 'scale(1.03) rotate(.6deg)' }, { transform: 'none' },
+      ],
+      { duration: 500 }
+    );
+  }
+
+  let toastTimer = 0;
+  function showToast(text) {
+    const toast = $('toast');
+    toast.textContent = text;
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.hidden = true; }, 6000);
+  }
+
+  /* ---------- Pizza-Modus: Stücke statt Ring ---------- */
+
+  const SLICES = 8;
+  const pizzaSlices = [];
+
+  function buildPizza() {
+    const NS = 'http://www.w3.org/2000/svg';
+    const make = (parent, tag, attrs) => {
+      const el = document.createElementNS(NS, tag);
+      Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+      parent.append(el);
+      return el;
+    };
+    const at = (radius, angle) => [100 + radius * Math.cos(angle), 100 + radius * Math.sin(angle)];
+    const sector = (outer, inner, a0, a1) => {
+      const [x0, y0] = at(outer, a0), [x1, y1] = at(outer, a1), [x2, y2] = at(inner, a1), [x3, y3] = at(inner, a0);
+      return `M${x0} ${y0}A${outer} ${outer} 0 0 1 ${x1} ${y1}L${x2} ${y2}A${inner} ${inner} 0 0 0 ${x3} ${y3}Z`;
+    };
+    const gap = 0.012;
+    for (let i = 0; i < SLICES; i++) {
+      const a0 = (i / SLICES) * 2 * Math.PI + gap, a1 = ((i + 1) / SLICES) * 2 * Math.PI - gap, mid = (a0 + a1) / 2;
+      const slice = make($('pizza'), 'g', {});
+      make(slice, 'path', { d: sector(99, 70, a0, a1), fill: '#c97a35' });
+      make(slice, 'path', { d: sector(92, 70, a0, a1), fill: '#ffc42e' });
+      const [px, py] = at(83, mid - 0.17), [qx, qy] = at(77, mid + 0.17), [bx, by] = at(86, mid + 0.2);
+      make(slice, 'circle', { cx: px, cy: py, r: 5, fill: '#d8341f' });
+      make(slice, 'circle', { cx: qx, cy: qy, r: 4.5, fill: '#d8341f' });
+      make(slice, 'circle', { cx: bx, cy: by, r: 1.8, fill: '#3f9e4d' });
+      pizzaSlices.push({ el: slice, dx: Math.cos(mid), dy: Math.sin(mid), last: -1 });
+    }
+  }
+
+  function renderPizza(fraction) {
+    pizzaSlices.forEach((slice, i) => {
+      const part = clamp(fraction * SLICES - i, 0, 1);
+      if (part === slice.last) return;
+      slice.last = part;
+      const offset = (1 - part) * 8;
+      slice.el.setAttribute('opacity', part);
+      slice.el.setAttribute('transform', `translate(${slice.dx * offset} ${slice.dy * offset})`);
+    });
+  }
+
+  function setPizza(on) {
+    settings.pizza = on;
+    $('pizza-mode').checked = on;
+    document.body.classList.toggle('pizza', on);
+    saveSettings();
+    render(remaining());
+  }
+
+  /* ---------- Zeiteingabe ---------- */
+
+  function setDuration(totalSeconds) {
+    settings.durationSec = totalSeconds;
+    durationMs = totalSeconds * 1000;
+    remainingAtAnchor = lastRemaining = durationMs;
+    document.querySelectorAll('.preset').forEach(b => b.classList.toggle('active', Number(b.dataset.seconds) === totalSeconds));
+    if (totalSeconds > 0) saveSettings();
+    $('start').disabled = state !== 'idle' || totalSeconds <= 0;
+    render(durationMs);
+  }
+
+  function syncInputs() {
+    $('minutes').value = Math.floor(settings.durationSec / 60);
+    $('seconds').value = settings.durationSec % 60;
+  }
+
+  function readInputs() {
+    const minutes = clamp(Math.floor(Number($('minutes').value)) || 0, 0, 99);
+    const seconds = clamp(Math.floor(Number($('seconds').value)) || 0, 0, 5999);
+    return clamp(minutes * 60 + seconds, 0, 5999);
+  }
+
+  /* ---------- Vollbild ---------- */
+
+  const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+
+  function toggleFullscreen() {
+    const root = document.documentElement;
+    if (fullscreenElement()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else {
+      const request = root.requestFullscreen || root.webkitRequestFullscreen;
+      if (request) Promise.resolve(request.call(root)).catch(() => showToast('Vollbild wurde vom Browser abgelehnt.'));
+    }
+  }
+
+  function onFullscreenChange() {
+    const on = !!fullscreenElement();
+    document.body.classList.toggle('fs', on);
+    $('fullscreen').firstChild.textContent = on ? 'Vollbild aus' : 'Vollbild';
+    // Manche Browser schlucken Escape im Vollbild und melden nur das Verlassen
+    if (!on) stopAlarm();
+    if (on) revealControls();
+  }
+
+  let hideUiTimer = 0;
+  function revealControls() {
+    if (!document.body.classList.contains('fs')) return;
+    document.body.classList.add('show-ui');
+    clearTimeout(hideUiTimer);
+    hideUiTimer = setTimeout(hideControls, 2500);
+  }
+
+  function hideControls() {
+    if ($('controls').matches(':hover') || !$('settings').hidden) { revealControls(); return; }
+    document.body.classList.remove('show-ui');
+  }
+
+  /* ---------- Testknopf ---------- */
+
+  let testing = false;
+
+  function stopTest() {
+    if (!testing) return;
+    testing = false;
+    audio.stopAlarm();
+    $('test').textContent = 'Test';
+  }
+
+  function toggleTest() {
+    if (testing) { stopTest(); return; }
+    audio.unlock();
+    if (!audio.ctx) { showToast('Dieser Browser kann keinen Ton abspielen.'); return; }
+    audio.startAlarm();
+    testing = true;
+    $('test').textContent = 'Stopp';
+    audio.testTimer = setTimeout(stopTest, 2500);
+  }
+
+  /* ---------- Eingaben ---------- */
+
+  function onKeyDown(e) {
+    // Gehaltene Tasten lösen nichts aus, sonst stoppt ein festgehaltener Finger den Alarm sofort
+    if (e.repeat) {
+      if (e.code === 'Space') e.preventDefault();
+      return;
+    }
+    if (state === 'alarm') {
+      e.preventDefault();
+      stopAlarm();
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const target = e.target;
+    if (target.tagName === 'SELECT' || target.type === 'checkbox') {
+      if (e.key === 'Escape') target.blur();
+      return;
+    }
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (state === 'idle') start(); else togglePause();
+    } else if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      reset();
+    } else if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault();
+      toggleFullscreen();
+    } else if (e.key === 'p' || e.key === 'P') {
+      e.preventDefault();
+      setPizza(!settings.pizza);
+    } else if (e.key === 'Escape') {
+      stopTest();
+      closeSettings();
+      if (target.blur) target.blur();
+    } else if (e.key === 'Enter' && target.type === 'number') {
+      target.blur();
+    }
+  }
+
+  function closeSettings() {
+    $('settings').hidden = true;
+    $('open-settings').setAttribute('aria-expanded', 'false');
+  }
+
+  function wireUp() {
+    addEventListener('keydown', onKeyDown);
+    // Verhindert, dass die Leertaste zusätzlich einen fokussierten Knopf klickt
+    addEventListener('keyup', e => { if (e.code === 'Space' && e.target.type !== 'checkbox') e.preventDefault(); });
+
+    // Nach einem Mausklick den Fokus lösen, damit Tastenkürzel danach nichts doppelt auslösen
+    document.addEventListener('click', e => {
+      const button = e.target.closest('button');
+      if (button && e.detail > 0) button.blur();
+    });
+
+    $('start').addEventListener('click', start);
+    $('pause').addEventListener('click', togglePause);
+    $('reset').addEventListener('click', reset);
+    $('fullscreen').addEventListener('click', toggleFullscreen);
+    $('alarm').addEventListener('click', stopAlarm);
+    $('test').addEventListener('click', toggleTest);
+    $('close-settings').addEventListener('click', closeSettings);
+    $('open-settings').addEventListener('click', () => {
+      const open = $('settings').hidden;
+      $('settings').hidden = !open;
+      $('open-settings').setAttribute('aria-expanded', String(open));
+    });
+
+    document.querySelectorAll('.preset').forEach(button => {
+      button.addEventListener('click', () => {
+        setDuration(Number(button.dataset.seconds));
+        syncInputs();
+      });
+    });
+    ['minutes', 'seconds'].forEach(id => {
+      $(id).addEventListener('input', () => setDuration(readInputs()));
+      // Beim Verlassen normalisieren, z. B. 90 Sekunden → 1:30
+      $(id).addEventListener('change', syncInputs);
+    });
+
+    $('volume').addEventListener('input', () => {
+      settings.volume = Number($('volume').value);
+      $('volume-value').textContent = `${settings.volume} %`;
+      audio.applyVolume();
+      saveSettings();
+    });
+    $('volume').addEventListener('change', () => $('volume').blur());
+    $('tone').addEventListener('change', () => {
+      settings.tone = $('tone').value;
+      saveSettings();
+      stopTest();
+      $('tone').blur();
+    });
+    $('warn-beeps').addEventListener('change', () => {
+      settings.warnBeeps = $('warn-beeps').checked;
+      saveSettings();
+      $('warn-beeps').blur();
+    });
+    $('pizza-mode').addEventListener('change', () => {
+      setPizza($('pizza-mode').checked);
+      $('pizza-mode').blur();
+    });
+
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+    document.addEventListener('mousemove', revealControls);
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (state === 'running' || state === 'paused' || wake.sentinel) wake.acquire();
+      if (audio.ctx && audio.ctx.state !== 'running') audio.ctx.resume().catch(() => {});
+      tick();
+    });
+
+    // rAF steht in verdeckten Tabs still: Restzeit, Warnpiepser und Titel laufen hierüber weiter
+    setInterval(tick, 250);
+  }
+
+  /* ---------- Start ---------- */
+
+  loadSettings();
+  buildPizza();
+  $('volume').value = settings.volume;
+  $('volume-value').textContent = `${settings.volume} %`;
+  $('tone').value = settings.tone;
+  $('warn-beeps').checked = settings.warnBeeps;
+  syncInputs();
+  wireUp();
+  setState('idle');
+  setDuration(settings.durationSec);
+  setPizza(settings.pizza);
+})();
+</script>
+</body>
+</html>
