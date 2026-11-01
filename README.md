@@ -40,6 +40,7 @@ Im Vollbild beendet Escape den Alarm und zusätzlich das Vollbild, das erzwingt 
 
 ## Hinweise
 
+- Der frühere, grellere Alarm bleibt erhalten: Taste S, dann unter „Alarmton“ den Eintrag „Buzzer, grell“ wählen.
 - Der Alarm flackert rot/weiß mit 2,5 Wechseln pro Sekunde und bleibt damit unter der 3-Hz-Grenze für Fotosensibilität. Trotzdem kurz ansagen, falls jemand empfindlich reagiert.
 - Der Bildschirm bleibt über die Wake Lock API wach, mit einem stummen Mini-Video als Fallback. Unter macOS hält `start.sh` ihn zusätzlich mit `caffeinate` wach.
 - Der Alarm kommt auch pünktlich, wenn der Tab verdeckt ist. Dafür muss einmal „Start“ gedrückt worden sein, was den Ton freischaltet.
