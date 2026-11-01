@@ -8,17 +8,17 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%95%3C/text%3E%3C/svg%3E">
 <style>
   :root {
-    --bg: #15100f;
-    --panel: #241b19;
-    --panel-line: #3d2f2b;
-    --text: #fff6e6;
-    --muted: #b9a998;
-    --basil: #63d471;
+    color-scheme: light;
+    --bg: #fff;
+    --panel: #fff;
+    --panel-line: #e6dcd3;
+    --text: #1f1512;
+    --muted: #7a6a5c;
     --cheese: #ffc42e;
     --orange: #ff9a1f;
     --tomato: #ff3b2a;
-    --accent: var(--basil);
-    --ring: clamp(220px, min(100vh - 232px, 92vw), 1400px);
+    --accent: var(--cheese);
+    --ring: clamp(200px, min(100vh - 32px, 92vw), 1400px);
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -39,8 +39,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px 14px;
+    justify-content: center;
     overflow: hidden;
   }
 
@@ -51,17 +50,19 @@
     width: 150vmax; height: 150vmax;
     margin: -75vmax 0 0 -75vmax;
     pointer-events: none;
-    opacity: .2;
+    opacity: .12;
     background: radial-gradient(circle, var(--accent) 0%, transparent 42%);
     transition: opacity .8s;
   }
-  body[data-phase="warn"] #ambient { opacity: .26; }
-  body[data-phase="danger"] #ambient { opacity: .42; }
+  body[data-phase="warn"] #ambient { opacity: .14; }
+  body[data-phase="danger"] #ambient { opacity: .2; }
   body[data-phase="danger"][data-state="running"] #ambient { animation: ambient-pulse 1s ease-in-out infinite; }
-  @keyframes ambient-pulse { 50% { opacity: .14; } }
+  @keyframes ambient-pulse { 50% { opacity: .07; } }
 
   .brand {
-    position: relative;
+    position: absolute;
+    top: 12px;
+    left: 16px;
     font-size: 20px;
     font-weight: 800;
     letter-spacing: .02em;
@@ -73,7 +74,7 @@
   /* ---------- Ring und Zeit ---------- */
   #dial {
     /* Hier statt in :root berechnet, damit die Ziffern dem --ring des Vollbilds folgen */
-    --digits: calc(var(--ring) * var(--digit-scale, .36));
+    --digits: calc(var(--ring) * var(--digit-scale, .3));
     position: relative;
     flex: none;
     width: var(--ring);
@@ -84,16 +85,16 @@
 
   #ring { display: block; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
   #classic circle { fill: none; transition: stroke .6s; }
-  #track { stroke: #fff; stroke-opacity: .08; stroke-width: 7; }
+  #track { stroke: #000; stroke-opacity: .07; stroke-width: 7; }
   #halo, #progress { stroke: var(--accent); stroke-linecap: round; }
-  #halo { stroke-width: 14; stroke-opacity: .2; }
+  #halo { stroke-width: 14; stroke-opacity: .28; }
   #progress { stroke-width: 7; }
   #pizza { display: none; }
   body.pizza #classic { display: none; }
   body.pizza #pizza { display: block; }
-  body.pizza #dial { --digit-scale: .27; }
-  #dial.long { --digit-scale: .27; }
-  body.pizza #dial.long { --digit-scale: .21; }
+  body.pizza #dial { --digit-scale: .25; }
+  #dial.long { --digit-scale: .24; }
+  body.pizza #dial.long { --digit-scale: .2; }
 
   #readout {
     position: absolute;
@@ -103,7 +104,9 @@
     justify-content: center;
     pointer-events: none;
   }
-  #time {
+  #time, #entry {
+    /* Breite einer Ziffernzelle: Eingabefelder schneiden alles ab, was nicht hineinpasst */
+    --cell: .7em;
     display: flex;
     font-size: var(--digits);
     font-weight: 800;
@@ -112,37 +115,62 @@
     color: var(--text);
     transition: color .6s;
   }
-  body[data-phase="warn"] #time { color: var(--cheese); }
+  body[data-state="idle"] #time, body:not([data-state="idle"]) #entry { display: none; }
+  /* Gelb wäre auf Weiß aus der Ferne unlesbar, die Ziffern bekommen ein dunkleres Orange */
+  body[data-phase="warn"] #time { color: #d97400; }
   body[data-phase="danger"] #time { color: var(--tomato); }
-  #time span { display: block; width: .62em; text-align: center; }
-  #time span.colon { width: .34em; margin-top: -.06em; }
+  #time span { display: block; width: var(--cell); text-align: center; }
+  #time span.colon, #entry .colon { display: block; width: .34em; margin-top: -.06em; text-align: center; }
+  #entry input {
+    height: 1em;
+    padding: 0;
+    border: 0;
+    border-radius: .06em;
+    outline: 0;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    background: transparent;
+    caret-color: transparent;
+    pointer-events: auto;
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+    transition: background .15s;
+  }
+  #seconds { width: calc(var(--cell) * 2); }
+  #entry input:hover { background: rgba(0, 0, 0, .05); }
+  #entry input:focus { background: rgba(0, 0, 0, .07); }
+  #entry input::selection { color: inherit; background: transparent; }
   body[data-state="paused"] #time { animation: paused 1.6s ease-in-out infinite; }
   @keyframes paused { 50% { opacity: .45; } }
 
-  #status {
+  /* Start, Reset und der Pausenhinweis teilen sich denselben Platz unter den Ziffern */
+  #action {
     position: absolute;
     left: 0; right: 0;
     top: calc(50% + var(--digits) * .62);
-    text-align: center;
-    font-size: calc(var(--ring) * .04);
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+    font-size: max(14px, calc(var(--ring) * .042));
+  }
+  #action button {
+    min-width: 5em;
+    padding: .4em 1.2em;
+    font-size: 1em;
+    font-weight: 800;
+    border-radius: 999px;
+    pointer-events: auto;
+  }
+  body:not([data-state="idle"]) #start, body:not([data-state="finished"]) #reset { display: none; }
+  #status {
     font-weight: 700;
     letter-spacing: .24em;
     text-indent: .24em;
     color: var(--muted);
   }
 
-  /* ---------- Bedienung ---------- */
-  #controls {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    transition: opacity .25s;
-  }
-  .row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
-  body:not([data-state="idle"]) #setup { visibility: hidden; }
-
+  /* ---------- Knöpfe ---------- */
   button, select, input { font: inherit; color: inherit; }
   button {
     background: var(--panel);
@@ -154,14 +182,14 @@
     cursor: pointer;
     transition: background .15s, transform .1s, opacity .15s;
   }
-  button:hover:not(:disabled) { background: #33272a; }
+  button:hover:not(:disabled) { background: #f6f0ea; }
   button:active:not(:disabled) { transform: scale(.97); }
   button:disabled { opacity: .38; cursor: default; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--cheese); outline-offset: 2px; }
-  button.primary { background: var(--tomato); border-color: var(--tomato); color: #fff; min-width: 120px; }
-  button.primary:hover:not(:disabled) { background: #ff5546; }
-  button.preset { font-variant-numeric: tabular-nums; }
-  button.preset.active { border-color: var(--cheese); color: var(--cheese); }
+  #start { background: var(--tomato); border-color: var(--tomato); color: #fff; }
+  #start:hover:not(:disabled) { background: #ff5546; }
+  #reset { background: var(--cheese); border-color: var(--cheese); color: #1a1208; }
+  #reset:hover:not(:disabled) { background: #ffd35f; }
   kbd {
     margin-left: 6px;
     padding: 0 5px;
@@ -170,25 +198,8 @@
     font-size: 11px;
     font-weight: 600;
     line-height: 16px;
-    background: rgba(255, 255, 255, .12);
+    background: rgba(0, 0, 0, .08);
   }
-
-  .time-input { display: flex; align-items: center; gap: 4px; margin-left: 8px; font-weight: 700; }
-  input[type="number"] {
-    width: 58px;
-    padding: 7px 4px;
-    text-align: center;
-    font-size: 17px;
-    font-variant-numeric: tabular-nums;
-    background: var(--panel);
-    border: 1px solid var(--panel-line);
-    border-radius: 10px;
-    -moz-appearance: textfield;
-    appearance: textfield;
-    user-select: text;
-    -webkit-user-select: text;
-  }
-  input[type="number"]::-webkit-inner-spin-button { display: none; }
 
   /* ---------- Einstellungen ---------- */
   #settings {
@@ -205,7 +216,7 @@
     background: var(--panel);
     border: 1px solid var(--panel-line);
     border-radius: 16px;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+    box-shadow: 0 18px 50px rgba(60, 30, 10, .18);
   }
   #settings[hidden] { display: none; }
   #settings h2 { margin: 0; font-size: 17px; }
@@ -232,25 +243,10 @@
   }
   #toast[hidden] { display: none; }
 
-  /* ---------- Vollbild: nur Ring und Zeit, Bedienung bei Mausbewegung ---------- */
-  body.fs { --ring: min(95vh, 95vw); cursor: none; }
-  body.fs.show-ui { cursor: auto; }
-  body.fs #stage { justify-content: center; padding: 0; }
+  /* ---------- Vollbild: nur Ring und Zeit ---------- */
+  body.fs { --ring: min(95vh, 95vw); }
+  body.fs[data-state="running"] { cursor: none; }
   body.fs .brand { display: none; }
-  body.fs #controls {
-    position: fixed;
-    z-index: 10;
-    bottom: 16px;
-    padding: 12px 16px;
-    background: rgba(21, 16, 15, .88);
-    border: 1px solid var(--panel-line);
-    border-radius: 16px;
-    opacity: 0;
-    pointer-events: none;
-  }
-  body.fs.show-ui #controls { opacity: 1; pointer-events: auto; }
-  body.fs #status { display: none; }
-  body.fs[data-state="paused"] #status { display: block; }
 
   /* ---------- Alarm ---------- */
   #alarm {
@@ -287,19 +283,6 @@
   .blast.wave { width: 20vmin; height: 20vmin; margin: -10vmin 0 0 -10vmin; border: 3vmin solid #ffc42e; border-radius: 50%; }
   .blast.bit { font-size: 7vmin; line-height: 1; margin: -3.5vmin 0 0 -3.5vmin; }
 
-  /* ---------- Kleine und schmale Fenster ---------- */
-  @media (max-height: 620px) {
-    :root { --ring: clamp(180px, min(100vh - 176px, 92vw), 1400px); }
-    #stage { padding: 4px 12px 8px; }
-    .brand { font-size: 15px; }
-    button { padding: 6px 11px; font-size: 14px; }
-    #controls { gap: 6px; }
-  }
-  @media (max-width: 760px) {
-    :root { --ring: clamp(180px, min(100vh - 300px, 92vw), 1400px); }
-    kbd { display: none; }
-    .time-input { margin-left: 0; }
-  }
   @media (prefers-reduced-motion: reduce) {
     body[data-phase="danger"][data-state="running"] #dial,
     body[data-phase="danger"][data-state="running"] #ambient,
@@ -323,31 +306,20 @@
       <g id="pizza"></g>
     </svg>
     <div id="readout">
+      <div id="entry">
+        <input id="minutes" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="Minuten">
+        <span class="colon">:</span>
+        <input id="seconds" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="Sekunden">
+      </div>
       <div id="time" role="timer" aria-label="Restzeit"></div>
-      <div id="status"></div>
+      <div id="action">
+        <button id="start">Start</button>
+        <button id="reset">Reset</button>
+        <div id="status"></div>
+      </div>
     </div>
   </div>
 
-  <div id="controls">
-    <div id="setup" class="row">
-      <button class="preset" data-seconds="60">1:00</button>
-      <button class="preset" data-seconds="120">2:00</button>
-      <button class="preset" data-seconds="180">3:00</button>
-      <button class="preset" data-seconds="300">5:00</button>
-      <div class="time-input">
-        <input id="minutes" type="number" min="0" max="99" inputmode="numeric" aria-label="Minuten">
-        :
-        <input id="seconds" type="number" min="0" max="59" inputmode="numeric" aria-label="Sekunden">
-      </div>
-    </div>
-    <div class="row">
-      <button id="start" class="primary">Start<kbd>Leer</kbd></button>
-      <button id="pause" disabled>Pause</button>
-      <button id="reset">Reset<kbd>R</kbd></button>
-      <button id="fullscreen">Vollbild<kbd>F</kbd></button>
-      <button id="open-settings" aria-expanded="false" aria-controls="settings">Einstellungen</button>
-    </div>
-  </div>
 </main>
 
 <aside id="settings" aria-label="Einstellungen" hidden>
@@ -368,6 +340,7 @@
   <label class="check"><input id="warn-beeps" type="checkbox"> Dezenter Piep bei 30 und 10 Sekunden</label>
   <label class="check"><input id="pizza-mode" type="checkbox"> Pizza-Modus <kbd>P</kbd></label>
   <p class="info">Bildschirm wach halten: <span id="wake-status">wird beim Start aktiviert</span></p>
+  <p class="info">Dieses Fenster öffnet und schließt die Taste S.</p>
   <p class="info">Die Lautstärke des Computers kann der Browser nicht ändern. Vor dem Event mit „Test“ prüfen.</p>
   <button id="close-settings" type="button">Schließen</button>
 </aside>
@@ -614,7 +587,7 @@
 
   /* ---------- Timer ---------- */
 
-  let state = 'idle'; // idle | running | paused | alarm
+  let state = 'idle'; // idle | running | paused | alarm | finished
   let durationMs = settings.durationSec * 1000;
   let remainingAtAnchor = durationMs;
   let anchor = 0;
@@ -630,10 +603,8 @@
     state = next;
     document.body.dataset.state = next;
     $('start').disabled = next !== 'idle' || durationMs <= 0;
-    $('pause').disabled = next !== 'running' && next !== 'paused';
-    $('pause').firstChild.textContent = next === 'paused' ? 'Fortsetzen' : 'Pause';
     $('test').disabled = next === 'running';
-    $('status').textContent = next === 'paused' ? 'PAUSE' : next === 'idle' ? 'BEREIT' : '';
+    $('status').textContent = next === 'paused' ? 'PAUSE' : '';
   }
 
   function run() {
@@ -649,7 +620,10 @@
   }
 
   function start() {
-    if (state !== 'idle' || durationMs <= 0) return;
+    if (state !== 'idle') return;
+    if (document.activeElement) document.activeElement.blur();
+    syncInputs();
+    if (durationMs <= 0) return;
     stopTest();
     audio.unlock();
     remainingAtAnchor = lastRemaining = durationMs;
@@ -699,7 +673,7 @@
     setState('alarm');
     render(0);
     audio.startAlarm();
-    $('settings').hidden = true;
+    closeSettings();
     $('alarm').hidden = false;
     explode();
   }
@@ -708,8 +682,7 @@
     if (state !== 'alarm') return;
     audio.stopAlarm();
     $('alarm').hidden = true;
-    state = 'stopped';
-    reset();
+    setState('finished');
   }
 
   /* ---------- Anzeige ---------- */
@@ -868,15 +841,19 @@
     settings.durationSec = totalSeconds;
     durationMs = totalSeconds * 1000;
     remainingAtAnchor = lastRemaining = durationMs;
-    document.querySelectorAll('.preset').forEach(b => b.classList.toggle('active', Number(b.dataset.seconds) === totalSeconds));
     if (totalSeconds > 0) saveSettings();
     $('start').disabled = state !== 'idle' || totalSeconds <= 0;
     render(durationMs);
   }
 
+  function fitMinutes() {
+    $('minutes').style.width = `calc(var(--cell) * ${Math.max(1, $('minutes').value.length)})`;
+  }
+
   function syncInputs() {
     $('minutes').value = Math.floor(settings.durationSec / 60);
-    $('seconds').value = settings.durationSec % 60;
+    $('seconds').value = String(settings.durationSec % 60).padStart(2, '0');
+    fitMinutes();
   }
 
   function readInputs() {
@@ -901,23 +878,8 @@
   function onFullscreenChange() {
     const on = !!fullscreenElement();
     document.body.classList.toggle('fs', on);
-    $('fullscreen').firstChild.textContent = on ? 'Vollbild aus' : 'Vollbild';
     // Manche Browser schlucken Escape im Vollbild und melden nur das Verlassen
     if (!on) stopAlarm();
-    if (on) revealControls();
-  }
-
-  let hideUiTimer = 0;
-  function revealControls() {
-    if (!document.body.classList.contains('fs')) return;
-    document.body.classList.add('show-ui');
-    clearTimeout(hideUiTimer);
-    hideUiTimer = setTimeout(hideControls, 2500);
-  }
-
-  function hideControls() {
-    if ($('controls').matches(':hover') || !$('settings').hidden) { revealControls(); return; }
-    document.body.classList.remove('show-ui');
   }
 
   /* ---------- Testknopf ---------- */
@@ -962,7 +924,9 @@
     }
     if (e.code === 'Space') {
       e.preventDefault();
-      if (state === 'idle') start(); else togglePause();
+      if (state === 'idle') start();
+      else if (state === 'finished') reset();
+      else togglePause();
     } else if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
       reset();
@@ -972,18 +936,20 @@
     } else if (e.key === 'p' || e.key === 'P') {
       e.preventDefault();
       setPizza(!settings.pizza);
+    } else if (e.key === 's' || e.key === 'S') {
+      e.preventDefault();
+      $('settings').hidden = !$('settings').hidden;
     } else if (e.key === 'Escape') {
       stopTest();
       closeSettings();
       if (target.blur) target.blur();
-    } else if (e.key === 'Enter' && target.type === 'number') {
+    } else if (e.key === 'Enter' && target.closest('#entry')) {
       target.blur();
     }
   }
 
   function closeSettings() {
     $('settings').hidden = true;
-    $('open-settings').setAttribute('aria-expanded', 'false');
   }
 
   function wireUp() {
@@ -998,28 +964,22 @@
     });
 
     $('start').addEventListener('click', start);
-    $('pause').addEventListener('click', togglePause);
     $('reset').addEventListener('click', reset);
-    $('fullscreen').addEventListener('click', toggleFullscreen);
     $('alarm').addEventListener('click', stopAlarm);
     $('test').addEventListener('click', toggleTest);
     $('close-settings').addEventListener('click', closeSettings);
-    $('open-settings').addEventListener('click', () => {
-      const open = $('settings').hidden;
-      $('settings').hidden = !open;
-      $('open-settings').setAttribute('aria-expanded', String(open));
-    });
-
-    document.querySelectorAll('.preset').forEach(button => {
-      button.addEventListener('click', () => {
-        setDuration(Number(button.dataset.seconds));
-        syncInputs();
-      });
-    });
     ['minutes', 'seconds'].forEach(id => {
-      $(id).addEventListener('input', () => setDuration(readInputs()));
+      const field = $(id);
+      field.addEventListener('input', () => {
+        field.value = field.value.replace(/\D/g, '');
+        fitMinutes();
+        setDuration(readInputs());
+      });
+      // Alles markieren, damit die neue Eingabe die alte Zahl ersetzt
+      field.addEventListener('focus', () => field.select());
+      field.addEventListener('click', () => field.select());
       // Beim Verlassen normalisieren, z. B. 90 Sekunden → 1:30
-      $(id).addEventListener('change', syncInputs);
+      field.addEventListener('blur', syncInputs);
     });
 
     $('volume').addEventListener('input', () => {
@@ -1047,7 +1007,6 @@
 
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('webkitfullscreenchange', onFullscreenChange);
-    document.addEventListener('mousemove', revealControls);
 
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
